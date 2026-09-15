@@ -29,9 +29,16 @@ Pass the same `formats` to whatever offers the output types, so WebP is listed w
 
 ## Updating libwebp
 
+The vendored sources are an unmodified upstream release. They move to the newest upstream release near the end of each
+TorchTag release cycle: release tags only, never `main`.
+
 `scripts/vendor-libwebp.sh <checkout>` replaces `Sources/libwebp/` from a libwebp checkout at a release tag, keeping
-only the headers the sources include, and records the tag in `upstream-versions.txt`. Re-read `COPYING` and
-`PATENTS` at the new tag before committing.
+only the headers the sources include, and records the tag in `upstream-versions.txt`.
+
+1. Run the script against a checkout of the current tag first. `git status` must stay clean; anything it reports is a
+   local change the update would erase.
+2. Run it against the new tag, and re-read `COPYING` and `PATENTS`.
+3. Run the package's tests and a WebP conversion in TorchTag before tagging.
 
 ## Dependencies
 
