@@ -125,6 +125,34 @@ final class WebPImageEncoderTests: BinTestCase {
         ).convert().output
     }
 
+    /// The EXIF block ImageIO writes into a JPEG holding only a capture date, as the TIFF structure after `Exif\0\0`.
+    private func captureDateEXIFBlock() throws -> Data {
+        let data = NSMutableData()
+        let destination = try #require(CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil))
+        let properties = [kCGImagePropertyExifDictionary: [kCGImagePropertyExifDateTimeOriginal: Self.captureDate]]
+
+        CGImageDestinationAddImage(destination, try songbird(), properties as CFDictionary)
+        try #require(CGImageDestinationFinalize(destination))
+
+        let bytes = [UInt8](data as Data)
+        let header: [UInt8] = [0x45, 0x78, 0x69, 0x66, 0, 0]
+        var offset = 2
+
+        while offset + 4 <= bytes.count, bytes[offset] == 0xFF, bytes[offset + 1] != 0xDA {
+            let end = offset + 2 + (Int(bytes[offset + 2]) << 8 | Int(bytes[offset + 3]))
+            let payload = offset + 4
+
+            if bytes[offset + 1] == 0xE1, end - payload > header.count, Array(bytes[payload ..< payload + header.count]) == header {
+                return Data(bytes[(payload + header.count) ..< end])
+            }
+
+            offset = end
+        }
+
+        Issue.record("No EXIF segment")
+        return Data()
+    }
+
     // MARK: - Pixels
 
     @Test func aRotatedSourceIsWrittenUprightAtItsDisplayedSize() throws {
@@ -218,5 +246,29 @@ final class WebPImageEncoderTests: BinTestCase {
         #expect(output.gps.isEmpty)
         #expect(output.keywords.isEmpty)
         #expect(output.orientation == 1)
+    }
+
+    /// Checked with no XMP packet, since ImageIO reads the capture date from either.
+    @Test func anEXIFBlockAloneIsReadBack() throws {
+        let data = try WebPImageEncoder().encode(ImageFileEncoderInput(image: songbird(), quality: 0.9, exif: captureDateEXIFBlock(), xmp: nil))
+        let url = bin.appending(component: "exif-only", directoryHint: .notDirectory).appendingPathExtension("webp")
+        try data.write(to: url)
+
+        #expect(try readBack(url).exif[kCGImagePropertyExifDateTimeOriginal as String] as? String == Self.captureDate)
+    }
+
+    /// Refused by name before rendering, rather than as a failed encode.
+    @Test func anImageWiderThanWebPHoldsIsRefused() throws {
+        let maxPixelSize = try #require(WebPImageEncoder().maxPixelSize)
+        let space = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+        let context = try #require(CGContext(
+            data: nil, width: maxPixelSize + 1, height: 1, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        ))
+        let wide = try write(#require(context.makeImage()), named: "wide", type: .png)
+
+        #expect(throws: ImageConversionError.exceedsMaxPixelSize(UTType.webP.identifier, maxPixelSize)) {
+            try self.convert(wide, named: "wide-output")
+        }
     }
 }
