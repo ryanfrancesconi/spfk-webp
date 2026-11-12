@@ -115,11 +115,11 @@ final class WebPImageEncoderTests: BinTestCase {
         named name: String,
         quality: Double = 0.9,
         metadata: ImageMetadataCopyScheme = .copyAll
-    ) throws -> URL {
+    ) async throws -> URL {
         let output = bin.appending(component: name, directoryHint: .notDirectory).appendingPathExtension(for: .webP)
         let options = ImageConversionOptions(format: UTType.webP.identifier, quality: quality, metadata: metadata)
 
-        return try ImageFormatConverter(
+        return try await ImageFormatConverter(
             source: ImageConversionSource(input: input, output: output, options: options),
             formats: ImageConversionFormats(encoders: [WebPImageEncoder()])
         ).convert().output
@@ -155,11 +155,11 @@ final class WebPImageEncoderTests: BinTestCase {
 
     // MARK: - Pixels
 
-    @Test func aRotatedSourceIsWrittenUprightAtItsDisplayedSize() throws {
+    @Test func aRotatedSourceIsWrittenUprightAtItsDisplayedSize() async throws {
         let input = try taggedSource()
         let source = try readBack(input)
 
-        let output = try readBack(convert(input, named: "upright"))
+        let output = try await readBack(convert(input, named: "upright"))
 
         #expect(output.type == UTType.webP.identifier)
         #expect(output.width == source.height)
@@ -167,11 +167,11 @@ final class WebPImageEncoderTests: BinTestCase {
         #expect(output.orientation == 1)
     }
 
-    @Test func lowerQualityWritesASmallerFile() throws {
+    @Test func lowerQualityWritesASmallerFile() async throws {
         let input = try taggedSource()
 
-        let low = try convert(input, named: "low", quality: 0.1)
-        let high = try convert(input, named: "high", quality: 0.9)
+        let low = try await convert(input, named: "low", quality: 0.1)
+        let high = try await convert(input, named: "high", quality: 0.9)
 
         let lowSize = try #require(low.resourceValues(forKeys: [.fileSizeKey]).fileSize)
         let highSize = try #require(high.resourceValues(forKeys: [.fileSizeKey]).fileSize)
@@ -179,7 +179,7 @@ final class WebPImageEncoderTests: BinTestCase {
         #expect(lowSize < highSize)
     }
 
-    @Test func aSixteenBitSourceIsWrittenAtEightBits() throws {
+    @Test func aSixteenBitSourceIsWrittenAtEightBits() async throws {
         let image = try songbird()
         let space = try #require(CGColorSpace(name: CGColorSpace.sRGB))
         let context = try #require(CGContext(
@@ -191,13 +191,13 @@ final class WebPImageEncoderTests: BinTestCase {
         let input = try write(#require(context.makeImage()), named: "sixteen-bit", type: .png)
         try #require(readBack(input).depth == 16)
 
-        let output = try readBack(convert(input, named: "eight-bit"))
+        let output = try await readBack(convert(input, named: "eight-bit"))
 
         #expect(output.depth == 8)
         #expect(output.width == image.width)
     }
 
-    @Test func transparencyIsKept() throws {
+    @Test func transparencyIsKept() async throws {
         let space = try #require(CGColorSpace(name: CGColorSpace.sRGB))
         let context = try #require(CGContext(
             data: nil, width: 64, height: 48, bitsPerComponent: 8, bytesPerRow: 0, space: space,
@@ -208,7 +208,7 @@ final class WebPImageEncoderTests: BinTestCase {
         context.fill(CGRect(x: 0, y: 0, width: 32, height: 48))
 
         let input = try write(#require(context.makeImage()), named: "transparent", type: .png)
-        let output = try convert(input, named: "transparent")
+        let output = try await convert(input, named: "transparent")
 
         let decoded = try #require(CGImageSourceCreateWithURL(output as CFURL, nil).flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) })
         let pixels = try ImageFileEncoderInput(image: decoded, quality: 1, exif: nil, xmp: nil).rgbaPixels(bitsPerComponent: 8)
@@ -221,8 +221,8 @@ final class WebPImageEncoderTests: BinTestCase {
 
     // MARK: - Metadata
 
-    @Test func copyAllKeepsTheCaptureDateLocationAndKeywords() throws {
-        let output = try readBack(convert(taggedSource(), named: "copy-all"))
+    @Test func copyAllKeepsTheCaptureDateLocationAndKeywords() async throws {
+        let output = try await readBack(convert(taggedSource(), named: "copy-all"))
 
         #expect(output.exif[kCGImagePropertyExifDateTimeOriginal as String] as? String == Self.captureDate)
         #expect(output.exif[kCGImagePropertyExifPixelXDimension as String] as? Int == output.width)
@@ -230,8 +230,8 @@ final class WebPImageEncoderTests: BinTestCase {
         #expect(output.keywords == Self.keywords)
     }
 
-    @Test func copyAllExceptLocationRemovesOnlyTheLocation() throws {
-        let output = try readBack(convert(taggedSource(), named: "no-location", metadata: .copyAllExceptLocation))
+    @Test func copyAllExceptLocationRemovesOnlyTheLocation() async throws {
+        let output = try await readBack(convert(taggedSource(), named: "no-location", metadata: .copyAllExceptLocation))
 
         #expect(output.gps.isEmpty)
         #expect(!output.hasLocationInXMP)
@@ -239,8 +239,8 @@ final class WebPImageEncoderTests: BinTestCase {
         #expect(output.keywords == Self.keywords)
     }
 
-    @Test func stripAllKeepsNoMetadata() throws {
-        let output = try readBack(convert(taggedSource(), named: "strip-all", metadata: .stripAll))
+    @Test func stripAllKeepsNoMetadata() async throws {
+        let output = try await readBack(convert(taggedSource(), named: "strip-all", metadata: .stripAll))
 
         #expect(output.exif[kCGImagePropertyExifDateTimeOriginal as String] == nil)
         #expect(output.gps.isEmpty)
@@ -258,7 +258,7 @@ final class WebPImageEncoderTests: BinTestCase {
     }
 
     /// Refused by name before rendering, rather than as a failed encode.
-    @Test func anImageWiderThanWebPHoldsIsRefused() throws {
+    @Test func anImageWiderThanWebPHoldsIsRefused() async throws {
         let maxPixelSize = try #require(WebPImageEncoder().maxPixelSize)
         let space = try #require(CGColorSpace(name: CGColorSpace.sRGB))
         let context = try #require(CGContext(
@@ -267,8 +267,8 @@ final class WebPImageEncoderTests: BinTestCase {
         ))
         let wide = try write(#require(context.makeImage()), named: "wide", type: .png)
 
-        #expect(throws: ImageConversionError.exceedsMaxPixelSize(UTType.webP.identifier, maxPixelSize)) {
-            try self.convert(wide, named: "wide-output")
+        await #expect(throws: ImageConversionError.exceedsMaxPixelSize(UTType.webP.identifier, maxPixelSize)) {
+            try await self.convert(wide, named: "wide-output")
         }
     }
 }
