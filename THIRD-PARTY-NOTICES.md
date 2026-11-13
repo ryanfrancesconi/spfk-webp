@@ -1,6 +1,6 @@
 # Third-party notices
 
-**The `LICENSE` file at the root of this repository (MIT) covers the packaging only** — `Package.swift`,
+**The `LICENSE` file at the root of this repository (MIT) covers the packaging only** - `Package.swift`,
 `Sources/SPFKWebP/`, the tests, the script and the README. It does **not** cover `Sources/libwebp/`, which is
 libwebp under its own terms.
 
